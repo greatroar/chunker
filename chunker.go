@@ -291,8 +291,27 @@ func (c *Chunker) Next(data []byte) (Chunk, error) {
 			c.pre = 0
 		}
 
-		add := c.count
+		// Slide in batches of eight bytes until we hit minSize-8.
 		digest := c.digest
+		for c.count+8 < minSize && c.bpos+8 < c.bmax {
+			digest = c.slide8(digest,
+				buf[c.bpos], buf[c.bpos+1], buf[c.bpos+2], buf[c.bpos+3],
+				buf[c.bpos+4], buf[c.bpos+5], buf[c.bpos+6], buf[c.bpos+7])
+			data = append(data, buf[c.bpos:c.bpos+8]...)
+			c.bpos += 8
+			c.count += 8
+			c.pos += 8
+		}
+		for c.count < minSize-1 && c.bpos < c.bmax {
+			digest = c.slide(digest, buf[c.bpos], c.wpos)
+			data = append(data, buf[c.bpos])
+			c.bpos++
+			c.count++
+			c.pos++
+			c.wpos++
+		}
+
+		add := c.count
 		win := c.window
 		wpos := c.wpos
 		for _, b := range buf[c.bpos:c.bmax] {
@@ -313,10 +332,6 @@ func (c *Chunker) Next(data []byte) (Chunk, error) {
 			// end manual inline
 
 			add++
-			if add < minSize {
-				continue
-			}
-
 			if (digest&c.splitmask) == 0 || add >= maxSize {
 				i := add - c.count - 1
 				data = append(data, c.buf[c.bpos:c.bpos+uint(i)+1]...)
@@ -367,6 +382,22 @@ func (c *Chunker) slide(digest uint64, b byte, wpos uint) (newDigest uint64) {
 	digest ^= uint64(c.tables.out[out])
 
 	digest = updateDigest(digest, c.polShift, &c.tables, b)
+	return digest
+}
+
+func (c *Chunker) slide8(digest uint64, b0, b1, b2, b3, b4, b5, b6, b7 byte) uint64 {
+	wpos := c.wpos
+
+	digest = c.slide(digest, b0, wpos)
+	digest = c.slide(digest, b1, wpos+1)
+	digest = c.slide(digest, b2, wpos+2)
+	digest = c.slide(digest, b3, wpos+3)
+	digest = c.slide(digest, b4, wpos+4)
+	digest = c.slide(digest, b5, wpos+5)
+	digest = c.slide(digest, b6, wpos+6)
+	digest = c.slide(digest, b7, wpos+7)
+
+	c.wpos = (wpos + 8) % windowSize
 	return digest
 }
 
