@@ -148,9 +148,9 @@ func (c *Chunker) reset() {
 
 	c.closed = false
 	c.digest = 0
-	c.wpos = 0
 	c.count = 0
-	c.digest = c.slide(c.digest, 1)
+	c.digest = c.slide(c.digest, 1, 0)
+	c.wpos = 1
 	c.start = c.pos
 
 	// do not start a new chunk unless at least MinSize bytes have been read
@@ -352,7 +352,7 @@ func (c *Chunker) Next(data []byte) (Chunk, error) {
 }
 
 func updateDigest(digest uint64, polShift uint, tab *tables, b byte) (newDigest uint64) {
-	index := digest >> polShift
+	index := byte(digest >> polShift)
 	digest <<= 8
 	digest |= uint64(b)
 
@@ -360,11 +360,11 @@ func updateDigest(digest uint64, polShift uint, tab *tables, b byte) (newDigest 
 	return digest
 }
 
-func (c *Chunker) slide(digest uint64, b byte) (newDigest uint64) {
-	out := c.window[c.wpos]
-	c.window[c.wpos] = b
+func (c *Chunker) slide(digest uint64, b byte, wpos uint) (newDigest uint64) {
+	wpos = wpos % windowSize
+	out := c.window[wpos]
+	c.window[wpos] = b
 	digest ^= uint64(c.tables.out[out])
-	c.wpos = (c.wpos + 1) % windowSize
 
 	digest = updateDigest(digest, c.polShift, &c.tables, b)
 	return digest
